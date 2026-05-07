@@ -84,6 +84,11 @@ async function getMpesaToken() {
     const consumerKey = process.env.MPESA_CONSUMER_KEY;
     const consumerSecret = process.env.MPESA_CONSUMER_SECRET;
     
+    // DEBUG: Log env vars to test if Render is reading them
+    console.log('KEY:', consumerKey?.slice(0, 8));
+    console.log('SECRET:', consumerSecret?.slice(0, 8));
+    console.log('FULL_KEY:', process.env.MPESA_CONSUMER_KEY);
+    
     // Check if we have real credentials
     if (!consumerKey || 
         consumerKey === 'YOUR_ACTUAL_CONSUMER_KEY_HERE' || 
