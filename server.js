@@ -521,6 +521,12 @@ app.post('/api/mpesa/stkpush', async (req, res) => {
         }
         
         const shortcode = process.env.MPESA_SHORTCODE;
+        
+        console.log('🔍 DEBUG PASSWORD GENERATION:');
+        console.log('Shortcode:', shortcode);
+        console.log('Passkey:', process.env.MPESA_PASSKEY?.slice(0, 5) + '...');
+        console.log('Timestamp:', timestamp);
+        console.log('Generated Password:', password);
         const callbackUrl = process.env.MPESA_CALLBACK_URL || `https://${req.get('host')}/api/mpesa/callback`;
         
         // Generate unique account reference from email
