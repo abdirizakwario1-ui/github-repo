@@ -10,129 +10,228 @@ const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const SECRET = process.env.JWT_SECRET || 'abrizak-secret-key-2026';
+const SECRET = process.env.JWT_SECRET || 'abdirizak-super-secret-key-2026';
 
 // ============ MIDDLEWARE ============
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(__dirname));
 
-// ============ DATA SETUP ============
+// Request logging middleware
+app.use(function(req, res, next) {
+    console.log(new Date().toISOString() + ' - ' + req.method + ' ' + req.url);
+    next();
+});
+
+// ============ DATA DIRECTORY SETUP ============
 const DATA_DIR = path.join(__dirname, 'data');
+const BACKUP_DIR = path.join(__dirname, 'backups');
+const LOGS_DIR = path.join(__dirname, 'logs');
+
+function ensureDirectoryExists(dir) {
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+}
+
+ensureDirectoryExists(DATA_DIR);
+ensureDirectoryExists(BACKUP_DIR);
+ensureDirectoryExists(LOGS_DIR);
+
+// Data files
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const VIDEOS_FILE = path.join(DATA_DIR, 'videos.json');
 const MODULES_FILE = path.join(DATA_DIR, 'modules.json');
 const TRANSACTIONS_FILE = path.join(DATA_DIR, 'transactions.json');
+const PAYMENTS_FILE = path.join(DATA_DIR, 'payments.json');
+const CERTIFICATES_FILE = path.join(DATA_DIR, 'certificates.json');
+const ACTIVITY_FILE = path.join(DATA_DIR, 'activity.json');
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+const COURSES_FILE = path.join(DATA_DIR, 'courses.json');
+const QUIZZES_FILE = path.join(DATA_DIR, 'quizzes.json');
+const ASSIGNMENTS_FILE = path.join(DATA_DIR, 'assignments.json');
+const FORUM_POSTS_FILE = path.join(DATA_DIR, 'forum_posts.json');
+const NOTIFICATIONS_FILE = path.join(DATA_DIR, 'notifications.json');
+const COUPONS_FILE = path.join(DATA_DIR, 'coupons.json');
+const WEBHOOKS_FILE = path.join(DATA_DIR, 'webhooks.json');
 
-// Create data directory if it doesn't exist
-if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR);
-}
-
-// Initialize data files if they don't exist
-if (!fs.existsSync(USERS_FILE)) {
-    fs.writeFileSync(USERS_FILE, '[]');
-}
-if (!fs.existsSync(VIDEOS_FILE)) {
-    fs.writeFileSync(VIDEOS_FILE, '[]');
-}
-if (!fs.existsSync(TRANSACTIONS_FILE)) {
-    fs.writeFileSync(TRANSACTIONS_FILE, '[]');
-}
-if (!fs.existsSync(MODULES_FILE)) {
-    const defaultModules = [
-        { id: "1", number: 1, title: "Getting Started", description: "Foundation principles and mindset for online success", icon: "🎯", status: "active", videoCount: 0 },
-        { id: "2", number: 2, title: "Making Your First $100", description: "Step-by-step methods to get your first income online", icon: "💰", status: "active", videoCount: 0 },
-        { id: "3", number: 3, title: "M-Pesa Money Secrets", description: "Kenya-specific strategies using mobile money", icon: "📱", status: "active", videoCount: 0 },
-        { id: "4", number: 4, title: "International Freelancing", description: "Earn USD from global platforms while in Kenya", icon: "🌍", status: "active", videoCount: 0 },
-        { id: "5", number: 5, title: "AI Money Machines", description: "Using AI tools to scale your online income", icon: "🤖", status: "coming_soon", videoCount: 0 },
-        { id: "6", number: 6, title: "Scaling to 6 Figures", description: "Advanced strategies for serious earners", icon: "📈", status: "coming_soon", videoCount: 0 }
-    ];
-    fs.writeFileSync(MODULES_FILE, JSON.stringify(defaultModules, null, 2));
+// Initialize data files
+function initDataFile(file, defaultData) {
+    if (!fs.existsSync(file)) {
+        fs.writeFileSync(file, JSON.stringify(defaultData, null, 2));
+    }
 }
 
-// Helper functions for JSON file operations
-function readJSON(file) {
+initDataFile(USERS_FILE, []);
+initDataFile(VIDEOS_FILE, []);
+initDataFile(MODULES_FILE, [
+    { id: "mod_1", number: 1, title: "Getting Started", description: "Foundation principles for online success", icon: "🎯", status: "active", order: 1 },
+    { id: "mod_2", number: 2, title: "Making Your First $100", description: "Step-by-step methods to get your first income", icon: "💰", status: "active", order: 2 },
+    { id: "mod_3", number: 3, title: "M-Pesa Money Secrets", description: "Kenya-specific strategies using mobile money", icon: "📱", status: "active", order: 3 },
+    { id: "mod_4", number: 4, title: "International Freelancing", description: "Earn USD from global platforms", icon: "🌍", status: "locked", order: 4 },
+    { id: "mod_5", number: 5, title: "AI Money Machines", description: "Using AI tools to scale your income", icon: "🤖", status: "coming_soon", order: 5 }
+]);
+initDataFile(TRANSACTIONS_FILE, []);
+initDataFile(PAYMENTS_FILE, []);
+initDataFile(CERTIFICATES_FILE, []);
+initDataFile(ACTIVITY_FILE, []);
+initDataFile(SETTINGS_FILE, { 
+    siteName: "Abdirizak Academy", 
+    currency: "KES", 
+    paymentAmount: 1000,
+    maintenanceMode: false,
+    version: "3.0.0",
+    allowRegistrations: true
+});
+initDataFile(COURSES_FILE, []);
+initDataFile(QUIZZES_FILE, []);
+initDataFile(ASSIGNMENTS_FILE, []);
+initDataFile(FORUM_POSTS_FILE, []);
+initDataFile(NOTIFICATIONS_FILE, []);
+initDataFile(COUPONS_FILE, []);
+initDataFile(WEBHOOKS_FILE, []);
+
+// ============ HELPER FUNCTIONS ============
+function readJSON(filePath) {
     try {
-        const data = fs.readFileSync(file, 'utf8');
+        const data = fs.readFileSync(filePath, 'utf8');
         return JSON.parse(data);
     } catch (error) {
-        console.error(`Error reading ${file}:`, error);
+        console.error('Error reading ' + filePath + ':', error.message);
         return [];
     }
 }
 
-function writeJSON(file, data) {
+function writeJSON(filePath, data) {
     try {
-        fs.writeFileSync(file, JSON.stringify(data, null, 2));
+        fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
         return true;
     } catch (error) {
-        console.error(`Error writing ${file}:`, error);
+        console.error('Error writing ' + filePath + ':', error.message);
         return false;
     }
 }
 
-// ============ M-PESA SETUP ============
-let mpesaToken = null;
-let tokenExpiry = null;
+function logActivity(userId, action, details) {
+    const logs = readJSON(ACTIVITY_FILE);
+    logs.push({
+        id: crypto.randomBytes(16).toString('hex'),
+        userId: userId,
+        action: action,
+        details: details || {},
+        timestamp: new Date().toISOString(),
+        ip: null
+    });
+    writeJSON(ACTIVITY_FILE, logs.slice(-10000));
+}
 
-/**
- * Get M-Pesa access token from Safaricom
- * Uses Consumer Key and Consumer Secret from environment variables
- */
-async function getMpesaToken() {
-    const consumerKey = process.env.MPESA_CONSUMER_KEY;
-    const consumerSecret = process.env.MPESA_CONSUMER_SECRET;
+function createBackup() {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupPath = path.join(BACKUP_DIR, 'backup_' + timestamp);
+    fs.mkdirSync(backupPath, { recursive: true });
     
-    console.log('KEY:', consumerKey?.slice(0, 8));
-    console.log('SECRET:', consumerSecret?.slice(0, 8));
-    console.log(process.env.MPESA_CONSUMER_KEY);
+    const files = fs.readdirSync(DATA_DIR);
+    files.forEach(function(file) {
+        const srcPath = path.join(DATA_DIR, file);
+        const destPath = path.join(backupPath, file);
+        fs.copyFileSync(srcPath, destPath);
+    });
     
-    // Check if we have real credentials
-    if (!consumerKey || 
-        consumerKey === 'YOUR_ACTUAL_CONSUMER_KEY_HERE' || 
-        consumerKey === 'YOUR_CONSUMER_KEY_HERE' ||
-        consumerKey === '') {
-        console.log('⚠️ No valid M-Pesa credentials found');
-        return null;
-    }
+    const backups = fs.readdirSync(BACKUP_DIR).filter(function(f) {
+        return f.startsWith('backup_');
+    }).sort().reverse();
     
-    // Return cached token if still valid
-    if (mpesaToken && tokenExpiry > Date.now()) {
-        console.log('📦 Using cached M-Pesa token');
-        return mpesaToken;
-    }
+    backups.slice(10).forEach(function(backup) {
+        fs.rmSync(path.join(BACKUP_DIR, backup), { recursive: true, force: true });
+    });
     
+    console.log('✅ Backup created: ' + backupPath);
+    return backupPath;
+}
+
+// Auto backup every 24 hours
+setInterval(function() {
+    createBackup();
+}, 24 * 60 * 60 * 1000);
+
+function generateToken(userId, email, role) {
+    return jwt.sign({ id: userId, email: email, role: role }, SECRET, { expiresIn: '30d' });
+}
+
+function verifyToken(token) {
     try {
-        const auth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64');
-        const response = await axios.get(
-            'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',
-            { 
-                headers: { 
-                    'Authorization': `Basic ${auth}` 
-                },
-                timeout: 30000
-            }
-        );
-        
-        if (response.data && response.data.access_token) {
-            mpesaToken = response.data.access_token;
-            tokenExpiry = Date.now() + (response.data.expires_in - 60) * 1000;
-            console.log('✅ M-Pesa token obtained successfully');
-            return mpesaToken;
-        } else {
-            console.error('❌ Invalid response from M-Pesa token endpoint');
-            return null;
-        }
+        return jwt.verify(token, SECRET);
     } catch (error) {
-        console.error('❌ M-Pesa token failed:', error.response?.data || error.message);
         return null;
     }
 }
 
-/**
- * Generate timestamp in required format (YYYYMMDDHHmmss)
- */
+function formatPhoneNumber(phone) {
+    if (!phone) return '';
+    let cleaned = phone.toString().replace(/\D/g, '');
+    
+    if (cleaned.length === 10 && cleaned.startsWith('07')) {
+        cleaned = '254' + cleaned.substring(1);
+    } else if (cleaned.length === 10 && cleaned.startsWith('01')) {
+        cleaned = '254' + cleaned.substring(1);
+    } else if (cleaned.length === 9 && cleaned.startsWith('7')) {
+        cleaned = '254' + cleaned;
+    } else if (cleaned.length === 9 && cleaned.startsWith('1')) {
+        cleaned = '254' + cleaned;
+    } else if (cleaned.length === 13 && cleaned.startsWith('+254')) {
+        cleaned = cleaned.substring(1);
+    }
+    
+    return cleaned;
+}
+
+function validateEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+}
+
+function validatePassword(password) {
+    return password && password.length >= 6;
+}
+
+// ============ M-PESA INTEGRATION ============
+let mpesaToken = null;
+let tokenExpiry = null;
+const pendingPayments = new Map();
+
+async function getMpesaToken() {
+    const consumerKey = process.env.MPESA_CONSUMER_KEY;
+    const consumerSecret = process.env.MPESA_CONSUMER_SECRET;
+    
+    if (!consumerKey || consumerKey === 'YOUR_ACTUAL_CONSUMER_KEY_HERE') {
+        console.log('⚠️ No valid M-Pesa credentials found');
+        return null;
+    }
+    
+    if (mpesaToken && tokenExpiry > Date.now()) {
+        return mpesaToken;
+    }
+    
+    try {
+        const auth = Buffer.from(consumerKey + ':' + consumerSecret).toString('base64');
+        const response = await axios.get(
+            'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',
+            { headers: { 'Authorization': 'Basic ' + auth }, timeout: 30000 }
+        );
+        
+        if (response.data.access_token) {
+            mpesaToken = response.data.access_token;
+            tokenExpiry = Date.now() + (response.data.expires_in - 60) * 1000;
+            console.log('✅ M-Pesa token obtained');
+            return mpesaToken;
+        }
+    } catch (error) {
+        console.error('❌ M-Pesa token error:', error.response?.data || error.message);
+    }
+    return null;
+}
+
 function getTimestamp() {
     const d = new Date();
     const year = d.getFullYear();
@@ -141,850 +240,900 @@ function getTimestamp() {
     const hours = String(d.getHours()).padStart(2, '0');
     const minutes = String(d.getMinutes()).padStart(2, '0');
     const seconds = String(d.getSeconds()).padStart(2, '0');
-    return `${year}${month}${day}${hours}${minutes}${seconds}`;
+    return year + month + day + hours + minutes + seconds;
 }
 
-/**
- * Generate password for STK Push request
- * Combines shortcode, passkey, and timestamp, then SHA256 encrypts
- */
-function generatePassword(timestamp) {
-    const passkey = process.env.MPESA_PASSKEY;
-    const shortcode = process.env.MPESA_SHORTCODE;
-
-    if (!passkey || !shortcode) {
-        console.error('Missing MPESA_PASSKEY or MPESA_SHORTCODE');
-        return null;
-    }
-
-    const str = shortcode + passkey + timestamp;
-    return Buffer.from(str).toString('base64');
-}
-
-/**
- * Format Kenyan phone number to international format (254XXXXXXXX)
- * Handles various input formats: 07XXXXXXXX, 2547XXXXXXXX, +2547XXXXXXXX, 7XXXXXXXX
- */
-function formatPhoneNumber(phone) {
-    if (!phone) return '';
+// ============ AUTHENTICATION SYSTEM ============
+app.post('/api/auth/register', async function(req, res) {
+    const name = req.body.name;
+    const email = req.body.email;
+    const phone = req.body.phone;
+    const password = req.body.password;
+    const confirmPassword = req.body.confirmPassword;
     
-    // Remove all non-digit characters
-    let cleaned = phone.toString().replace(/\D/g, '');
-    
-    console.log(`📞 Phone formatting - Original: ${phone}, Cleaned: ${cleaned}`);
-    
-    // Handle different formats
-    if (cleaned.length === 10 && cleaned.startsWith('07')) {
-        // 0712345678 -> 254712345678
-        cleaned = '254' + cleaned.substring(1);
-    } else if (cleaned.length === 10 && cleaned.startsWith('01')) {
-        // 0112345678 -> 254112345678
-        cleaned = '254' + cleaned.substring(1);
-    } else if (cleaned.length === 9 && cleaned.startsWith('7')) {
-        // 712345678 -> 254712345678
-        cleaned = '254' + cleaned;
-    } else if (cleaned.length === 9 && cleaned.startsWith('1')) {
-        // 112345678 -> 254112345678
-        cleaned = '254' + cleaned;
-    } else if (cleaned.length === 12 && cleaned.startsWith('254')) {
-        // 254712345678 -> keep as is
-        cleaned = cleaned;
-    } else if (cleaned.length === 13 && cleaned.startsWith('254')) {
-        // Remove extra digit if accidentally added
-        cleaned = cleaned.substring(0, 12);
-    } else if (cleaned.length === 13 && cleaned.startsWith('+254')) {
-        // +254712345678 -> 254712345678
-        cleaned = cleaned.substring(1);
-    }
-    
-    console.log(`📞 Phone formatting - Result: ${cleaned}`);
-    return cleaned;
-}
-
-/**
- * Validate if phone number is correctly formatted for M-Pesa
- */
-function isValidKenyanPhone(phone) {
-    const formatted = formatPhoneNumber(phone);
-    const isValid = formatted && formatted.length === 12 && formatted.startsWith('254');
-    console.log(`📞 Phone validation - Input: ${phone}, Formatted: ${formatted}, Valid: ${isValid}`);
-    return isValid;
-}
-
-// Store pending transactions for callback handling
-const pendingPayments = new Map();
-
-// ============ HEALTH CHECK ENDPOINTS ============
-app.get('/api/health', (req, res) => {
-    res.json({ 
-        status: 'ok', 
-        message: 'Server running!',
-        timestamp: new Date().toISOString(),
-        mpesaMode: process.env.MPESA_CONSUMER_KEY && process.env.MPESA_CONSUMER_KEY !== 'YOUR_ACTUAL_CONSUMER_KEY_HERE' ? 'real' : 'simulation'
-    });
-});
-
-app.get('/api/health/detailed', (req, res) => {
-    const hasMpesaCreds = !!(process.env.MPESA_CONSUMER_KEY && 
-                             process.env.MPESA_CONSUMER_KEY !== 'YOUR_ACTUAL_CONSUMER_KEY_HERE' &&
-                             process.env.MPESA_PASSKEY &&
-                             process.env.MPESA_SHORTCODE);
-    
-    res.json({
-        status: 'ok',
-        timestamp: new Date().toISOString(),
-        configuration: {
-            mpesaConfigured: hasMpesaCreds,
-            mpesaMode: hasMpesaCreds ? 'real' : 'simulation',
-            environment: process.env.MPESA_ENVIRONMENT || 'sandbox',
-            callbackUrl: process.env.MPESA_CALLBACK_URL || 'not set'
-        }
-    });
-});
-
-// ============ PHONE NUMBER TEST ENDPOINT ============
-app.post('/api/mpesa/test-phone', (req, res) => {
-    const { phone } = req.body;
-    if (!phone) {
-        return res.status(400).json({ error: 'Phone number required' });
-    }
-    
-    const formatted = formatPhoneNumber(phone);
-    const isValid = isValidKenyanPhone(phone);
-    
-    res.json({ 
-        original: phone, 
-        formatted: formatted,
-        isValid: isValid,
-        length: formatted.length,
-        startsWith: formatted.substring(0, 3)
-    });
-});
-
-// ============ AUTHENTICATION ROUTES ============
-
-/**
- * User Signup
- * Creates a new user account
- */
-app.post('/api/auth/signup', async (req, res) => {
-    const { name, email, phone, password } = req.body;
-    
-    console.log(`📝 Signup attempt: ${email}`);
-    
-    // Validate required fields
     if (!name || !email || !password) {
         return res.status(400).json({ error: 'Name, email, and password are required' });
     }
     
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-        return res.status(400).json({ error: 'Invalid email format' });
+    if (password !== confirmPassword) {
+        return res.status(400).json({ error: 'Passwords do not match' });
     }
     
-    // Validate password strength
-    if (password.length < 6) {
+    if (!validatePassword(password)) {
         return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+    
+    if (!validateEmail(email)) {
+        return res.status(400).json({ error: 'Invalid email format' });
     }
     
     try {
         const users = readJSON(USERS_FILE);
         
-        // Check if user already exists
-        if (users.find(u => u.email === email)) {
-            return res.status(400).json({ error: 'User with this email already exists' });
+        const existingUser = users.find(function(u) {
+            return u.email === email.toLowerCase();
+        });
+        
+        if (existingUser) {
+            return res.status(400).json({ error: 'Email already registered' });
         }
         
-        // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
+        const formattedPhone = phone ? formatPhoneNumber(phone) : '';
         
-        // Format phone number if provided
-        let formattedPhone = '';
-        if (phone) {
-            formattedPhone = formatPhoneNumber(phone);
-        }
-        
-        // Create new user object
         const newUser = {
-            id: Date.now().toString(),
+            id: 'usr_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex'),
             name: name.trim(),
-            email: email.toLowerCase().trim(),
+            email: email.toLowerCase(),
             phone: formattedPhone,
             password: hashedPassword,
             paid: false,
-            paymentMethod: null,
-            paidAt: null,
+            role: 'user',
             createdAt: new Date().toISOString(),
-            lastLogin: null
+            lastLogin: null,
+            profilePicture: null,
+            bio: null,
+            courseProgress: {},
+            certificates: [],
+            settings: {
+                emailNotifications: true,
+                twoFactorEnabled: false
+            }
         };
         
         users.push(newUser);
         writeJSON(USERS_FILE, users);
         
-        // Generate JWT token
-        const token = jwt.sign(
-            { id: newUser.id, email: newUser.email }, 
-            SECRET, 
-            { expiresIn: '30d' }
-        );
+        const token = generateToken(newUser.id, newUser.email, 'user');
+        logActivity(newUser.id, 'REGISTER', { email: newUser.email });
         
-        console.log(`✅ User created: ${email}`);
-        
-        res.json({ 
-            success: true, 
-            token, 
-            user: { 
-                id: newUser.id, 
-                name: newUser.name, 
-                email: newUser.email, 
-                paid: false 
-            } 
+        res.status(201).json({
+            success: true,
+            message: 'Registration successful',
+            token: token,
+            user: {
+                id: newUser.id,
+                name: newUser.name,
+                email: newUser.email,
+                paid: newUser.paid,
+                role: newUser.role
+            }
         });
     } catch (error) {
-        console.error('❌ Signup error:', error);
+        console.error('Registration error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-/**
- * User Login
- * Authenticates existing user
- */
-app.post('/api/auth/login', async (req, res) => {
-    const { email, password } = req.body;
-    
-    console.log(`🔐 Login attempt: ${email}`);
+app.post('/api/auth/login', async function(req, res) {
+    const email = req.body.email;
+    const password = req.body.password;
     
     if (!email || !password) {
-        return res.status(400).json({ error: 'Email and password are required' });
+        return res.status(400).json({ error: 'Email and password required' });
     }
     
     try {
         const users = readJSON(USERS_FILE);
-        const user = users.find(u => u.email === email.toLowerCase().trim());
+        const user = users.find(function(u) {
+            return u.email === email.toLowerCase();
+        });
         
         if (!user) {
-            console.log(`❌ Login failed: User not found - ${email}`);
-            return res.status(401).json({ error: 'Invalid email or password' });
+            return res.status(401).json({ error: 'Invalid credentials' });
         }
         
         const validPassword = await bcrypt.compare(password, user.password);
         if (!validPassword) {
-            console.log(`❌ Login failed: Invalid password - ${email}`);
-            return res.status(401).json({ error: 'Invalid email or password' });
+            return res.status(401).json({ error: 'Invalid credentials' });
         }
         
-        // Update last login timestamp
         user.lastLogin = new Date().toISOString();
         writeJSON(USERS_FILE, users);
         
-        const token = jwt.sign(
-            { id: user.id, email: user.email }, 
-            SECRET, 
-            { expiresIn: '30d' }
-        );
+        const token = generateToken(user.id, user.email, user.role || 'user');
+        logActivity(user.id, 'LOGIN', { email: user.email });
         
-        console.log(`✅ User logged in: ${email}, Paid: ${user.paid}`);
-        
-        res.json({ 
-            success: true, 
-            token, 
-            paid: user.paid, 
-            name: user.name,
-            email: user.email
+        res.json({
+            success: true,
+            message: 'Login successful',
+            token: token,
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                paid: user.paid,
+                role: user.role || 'user'
+            }
         });
     } catch (error) {
-        console.error('❌ Login error:', error);
+        console.error('Login error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-/**
- * Verify JWT Token
- * Checks if token is valid and returns user status
- */
-app.get('/api/auth/verify', (req, res) => {
-    const token = req.headers.authorization?.split(' ')[1];
+app.get('/api/auth/verify', function(req, res) {
+    const authHeader = req.headers.authorization;
+    const token = authHeader ? authHeader.split(' ')[1] : null;
     
     if (!token) {
         return res.status(401).json({ valid: false, error: 'No token provided' });
     }
     
-    try {
-        const decoded = jwt.verify(token, SECRET);
-        const users = readJSON(USERS_FILE);
-        const user = users.find(u => u.id === decoded.id);
-        
-        if (!user) {
-            return res.status(401).json({ valid: false, error: 'User not found' });
-        }
-        
-        res.json({ 
-            valid: true, 
-            paid: user.paid || false,
-            email: user.email,
-            name: user.name
-        });
-    } catch (error) {
-        console.error('❌ Token verification error:', error.message);
-        res.status(401).json({ valid: false, error: 'Invalid token' });
-    }
-});
-
-// ============ M-PESA STK PUSH ROUTE ============
-
-/**
- * Initiate M-Pesa STK Push payment
- * Sends payment request to customer's phone
- */
-app.post('/api/mpesa/stkpush', async (req, res) => {
-    const { phone, amount, email, name } = req.body;
-    
-    console.log('📱 Payment request received:', { phone, amount, email });
-    
-    // Validate required fields
-    if (!phone || !amount) {
-        return res.status(400).json({ error: 'Phone number and amount are required' });
-    }
-    
-    if (!email) {
-        return res.status(400).json({ error: 'Email is required' });
-    }
-    
-    // Format and validate phone number
-    let formattedPhone;
-    try {
-        formattedPhone = formatPhoneNumber(phone);
-        console.log('📞 Formatted phone number:', formattedPhone);
-        
-        if (!formattedPhone || formattedPhone.length !== 12 || !formattedPhone.startsWith('254')) {
-            return res.status(400).json({ 
-                error: 'Invalid phone number format. Please use format: 0712345678 or 254712345678',
-                hint: 'Example: 254712345678 or 0712345678'
-            });
-        }
-    } catch (err) {
-        return res.status(400).json({ error: 'Invalid phone number format' });
-    }
-    
-    // Check for real M-Pesa credentials in environment
-    const hasRealCreds = process.env.MPESA_CONSUMER_KEY && 
-                         process.env.MPESA_CONSUMER_KEY !== 'YOUR_ACTUAL_CONSUMER_KEY_HERE' &&
-                         process.env.MPESA_CONSUMER_KEY !== 'YOUR_CONSUMER_KEY_HERE' &&
-                         process.env.MPESA_CONSUMER_KEY !== '' &&
-                         process.env.MPESA_PASSKEY &&
-                         process.env.MPESA_PASSKEY !== '' &&
-                         process.env.MPESA_SHORTCODE &&
-                         process.env.MPESA_SHORTCODE !== '';
-    
-    // ============ SIMULATION MODE ============
-    if (!hasRealCreds) {
-        console.log(`🔵 SIMULATION MODE: Processing payment for ${email} - KES ${amount}`);
-        
-        // Auto-confirm payment after 3 seconds
-        setTimeout(() => {
-            const users = readJSON(USERS_FILE);
-            const user = users.find(u => u.email === email);
-            if (user && !user.paid) {
-                user.paid = true;
-                user.paidAt = new Date().toISOString();
-                user.paymentMethod = 'simulation';
-                user.paidAmount = amount;
-                writeJSON(USERS_FILE, users);
-                console.log(`✅ SIMULATION: User ${email} marked as paid`);
-            }
-        }, 3000);
-        
-        return res.json({
-            ResponseCode: '0',
-            ResponseDescription: 'Success (Simulation Mode)',
-            CustomerMessage: '✅ SIMULATION: Payment will auto-confirm in 3 seconds',
-            CheckoutRequestID: `SIM_${Date.now()}`
-        });
-    }
-    
-    // ============ REAL M-PESA MODE ============
-    try {
-        // Get M-Pesa access token
-        const token = await getMpesaToken();
-        if (!token) {
-            throw new Error('Failed to obtain M-Pesa access token. Please check your credentials.');
-        }
-        
-        // Prepare STK Push request parameters
-        const timestamp = getTimestamp();
-        const password = generatePassword(timestamp);
-        
-        if (!password) {
-            throw new Error('Failed to generate password. Check MPESA_PASSKEY and MPESA_SHORTCODE.');
-        }
-        
-        const shortcode = process.env.MPESA_SHORTCODE;
-        
-        console.log('🔍 DEBUG PASSWORD GENERATION:');
-        console.log('Shortcode:', shortcode);
-        console.log('Passkey:', process.env.MPESA_PASSKEY?.slice(0, 5) + '...');
-        console.log('Timestamp:', timestamp);
-        console.log('Generated Password:', password);
-        const callbackUrl = process.env.MPESA_CALLBACK_URL || `https://${req.get('host')}/api/mpesa/callback`;
-        
-        // Generate unique account reference from email
-        const accountReference = email.split('@')[0].substring(0, 20) || `ABZ${Date.now()}`;
-        
-        const requestBody = {
-            BusinessShortCode: shortcode,
-            Password: password,
-            Timestamp: timestamp,
-            TransactionType: 'CustomerPayBillOnline',
-            Amount: Math.round(amount),
-            PartyA: formattedPhone,
-            PartyB: shortcode,
-            PhoneNumber: formattedPhone,
-            CallBackURL: callbackUrl,
-            AccountReference: accountReference,
-            TransactionDesc: 'Abdirizak Academy Payment'
-        };
-        
-        console.log('📤 Sending STK Push request to Safaricom...');
-        console.log('Request details:', {
-            phone: formattedPhone,
-            amount: amount,
-            shortcode: shortcode,
-            accountRef: accountReference
-        });
-        
-        // Send STK Push request to Safaricom
-        const response = await axios.post(
-            'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
-            requestBody,
-            { 
-                headers: { 
-                    'Authorization': `Bearer ${token}`, 
-                    'Content-Type': 'application/json' 
-                },
-                timeout: 30000
-            }
-        );
-        
-        console.log('📥 Safaricom STK Push response:', response.data);
-        
-        // Handle successful STK Push
-        if (response.data && response.data.ResponseCode === '0') {
-            const checkoutId = response.data.CheckoutRequestID;
-            
-            // Store pending payment for callback
-            pendingPayments.set(checkoutId, {
-                email: email,
-                name: name,
-                phone: formattedPhone,
-                amount: amount,
-                checkoutRequestId: checkoutId,
-                timestamp: new Date().toISOString(),
-                status: 'pending'
-            });
-            
-            // Also store in transactions file
-            const transactions = readJSON(TRANSACTIONS_FILE);
-            transactions.push({
-                id: checkoutId,
-                email: email,
-                amount: amount,
-                phone: formattedPhone,
-                status: 'pending',
-                createdAt: new Date().toISOString()
-            });
-            writeJSON(TRANSACTIONS_FILE, transactions);
-            
-            console.log(`✅ STK Push sent successfully. CheckoutID: ${checkoutId}`);
-            
-            res.json({
-                ResponseCode: response.data.ResponseCode,
-                ResponseDescription: response.data.ResponseDescription,
-                CustomerMessage: 'STK Push sent! Check your phone and enter your PIN.',
-                CheckoutRequestID: checkoutId
-            });
-        } else {
-            // Handle Safaricom error response
-            const errorMsg = response.data?.ResponseDescription || 'STK Push request failed';
-            console.error('❌ Safaricom error:', errorMsg);
-            res.status(400).json({
-                error: errorMsg,
-                ResponseCode: response.data?.ResponseCode || '1'
-            });
-        }
-    } catch (error) {
-        console.error('❌ M-Pesa STK Push error:', error.response?.data || error.message);
-        
-        let errorMessage = 'Payment processing failed. ';
-        if (error.response?.data?.errorMessage) {
-            errorMessage += error.response.data.errorMessage;
-        } else if (error.response?.data?.ResponseDescription) {
-            errorMessage += error.response.data.ResponseDescription;
-        } else if (error.code === 'ECONNABORTED') {
-            errorMessage += 'Request timed out. Please try again.';
-        } else if (error.message.includes('token')) {
-            errorMessage += 'Authentication failed. Please contact support.';
-        } else {
-            errorMessage += 'Please check your phone number and try again.';
-        }
-        
-        res.status(500).json({ error: errorMessage });
-    }
-});
-
-// ============ M-PESA CALLBACK ROUTE ============
-
-/**
- * M-Pesa Callback endpoint
- * Safaricom calls this after customer completes payment
- */
-app.post('/api/mpesa/callback', (req, res) => {
-    console.log('📞 M-Pesa Callback received at:', new Date().toISOString());
-    console.log('Callback body:', JSON.stringify(req.body, null, 2));
-    
-    const { Body } = req.body;
-    
-    if (Body && Body.stkCallback) {
-        const { 
-            ResultCode, 
-            ResultDesc, 
-            CheckoutRequestID, 
-            CallbackMetadata 
-        } = Body.stkCallback;
-        
-        console.log(`Callback Result: ${ResultCode} - ${ResultDesc}`);
-        console.log(`CheckoutRequestID: ${CheckoutRequestID}`);
-        
-        if (ResultCode === 0) {
-            // Payment successful
-            const payment = pendingPayments.get(CheckoutRequestID);
-            
-            if (payment && payment.email) {
-                const users = readJSON(USERS_FILE);
-                const user = users.find(u => u.email === payment.email);
-                
-                if (user && !user.paid) {
-                    // Mark user as paid
-                    user.paid = true;
-                    user.paidAt = new Date().toISOString();
-                    user.paymentMethod = 'mpesa';
-                    user.paidAmount = payment.amount;
-                    
-                    // Extract receipt number from callback metadata
-                    if (CallbackMetadata && CallbackMetadata.Item) {
-                        const receiptItem = CallbackMetadata.Item.find(i => i.Name === 'MpesaReceiptNumber');
-                        if (receiptItem) {
-                            user.mpesaReceipt = receiptItem.Value;
-                        }
-                        
-                        const amountItem = CallbackMetadata.Item.find(i => i.Name === 'Amount');
-                        if (amountItem) {
-                            user.paidAmount = amountItem.Value;
-                        }
-                    }
-                    
-                    writeJSON(USERS_FILE, users);
-                    console.log(`✅✅ User ${payment.email} marked as paid via M-Pesa!`);
-                    
-                    // Update transaction status
-                    const transactions = readJSON(TRANSACTIONS_FILE);
-                    const transaction = transactions.find(t => t.id === CheckoutRequestID);
-                    if (transaction) {
-                        transaction.status = 'completed';
-                        transaction.completedAt = new Date().toISOString();
-                        writeJSON(TRANSACTIONS_FILE, transactions);
-                    }
-                }
-                
-                // Remove from pending payments
-                pendingPayments.delete(CheckoutRequestID);
-            } else {
-                console.log(`⚠️ Payment record not found for CheckoutID: ${CheckoutRequestID}`);
-            }
-        } else {
-            // Payment failed
-            console.log(`❌ Payment failed: ${ResultDesc}`);
-            
-            const payment = pendingPayments.get(CheckoutRequestID);
-            if (payment) {
-                // Update transaction status
-                const transactions = readJSON(TRANSACTIONS_FILE);
-                const transaction = transactions.find(t => t.id === CheckoutRequestID);
-                if (transaction) {
-                    transaction.status = 'failed';
-                    transaction.failedReason = ResultDesc;
-                    writeJSON(TRANSACTIONS_FILE, transactions);
-                }
-                pendingPayments.delete(CheckoutRequestID);
-            }
-        }
-    } else {
-        console.log('⚠️ Invalid callback body received');
-    }
-    
-    // Always respond with success to Safaricom
-    res.json({ ResultCode: 0, ResultDesc: 'Success' });
-});
-
-// ============ PAYMENT STATUS CHECK ============
-
-/**
- * Check payment status for a user
- */
-app.get('/api/mpesa/check-status', (req, res) => {
-    const { email } = req.query;
-    
-    if (!email) {
-        return res.status(400).json({ error: 'Email required' });
+    const decoded = verifyToken(token);
+    if (!decoded) {
+        return res.status(401).json({ valid: false, error: 'Invalid token' });
     }
     
     const users = readJSON(USERS_FILE);
-    const user = users.find(u => u.email === email);
-    
-    res.json({ 
-        paid: user?.paid || false,
-        paidAt: user?.paidAt || null,
-        paymentMethod: user?.paymentMethod || null,
-        email: email
+    const user = users.find(function(u) {
+        return u.id === decoded.id;
     });
-});
-
-/**
- * Get transaction details
- */
-app.get('/api/mpesa/transaction/:id', (req, res) => {
-    const { id } = req.params;
-    const transactions = readJSON(TRANSACTIONS_FILE);
-    const transaction = transactions.find(t => t.id === id);
-    
-    if (!transaction) {
-        return res.status(404).json({ error: 'Transaction not found' });
-    }
-    
-    res.json(transaction);
-});
-
-// ============ ADMIN ROUTES ============
-
-/**
- * Get all users (Admin only - no auth for simplicity, add auth in production)
- */
-app.get('/api/admin/users', (req, res) => {
-    const users = readJSON(USERS_FILE);
-    const safeUsers = users.map(u => ({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        phone: u.phone,
-        paid: u.paid,
-        paymentMethod: u.paymentMethod,
-        paidAt: u.paidAt,
-        createdAt: u.createdAt,
-        lastLogin: u.lastLogin
-    }));
-    res.json(safeUsers);
-});
-
-/**
- * Mark a user as paid manually (Admin)
- */
-app.post('/api/admin/mark-paid', (req, res) => {
-    const { email } = req.body;
-    
-    if (!email) {
-        return res.status(400).json({ error: 'Email required' });
-    }
-    
-    const users = readJSON(USERS_FILE);
-    const user = users.find(u => u.email === email);
     
     if (!user) {
-        return res.status(404).json({ error: 'User not found' });
+        return res.status(401).json({ valid: false, error: 'User not found' });
     }
-    
-    user.paid = true;
-    user.paidAt = new Date().toISOString();
-    user.paymentMethod = 'admin_manual';
-    writeJSON(USERS_FILE, users);
-    
-    console.log(`👑 Admin marked user as paid: ${email}`);
-    res.json({ success: true, message: `User ${email} marked as paid` });
-});
-
-/**
- * Get all videos
- */
-app.get('/api/admin/videos', (req, res) => {
-    const videos = readJSON(VIDEOS_FILE);
-    res.json(videos);
-});
-
-/**
- * Add a new video (Admin)
- */
-app.post('/api/admin/videos', (req, res) => {
-    const { moduleId, title, url, duration, description, order } = req.body;
-    
-    if (!title || !url) {
-        return res.status(400).json({ error: 'Title and URL are required' });
-    }
-    
-    const videos = readJSON(VIDEOS_FILE);
-    const newVideo = {
-        id: Date.now().toString(),
-        moduleId: moduleId || '1',
-        title: title,
-        url: url,
-        duration: duration || 15,
-        description: description || '',
-        order: order || videos.length + 1,
-        createdAt: new Date().toISOString()
-    };
-    
-    videos.push(newVideo);
-    writeJSON(VIDEOS_FILE, videos);
-    
-    console.log(`🎬 Video added: ${title}`);
-    res.json(newVideo);
-});
-
-/**
- * Delete a video (Admin)
- */
-app.delete('/api/admin/videos/:id', (req, res) => {
-    const { id } = req.params;
-    const videos = readJSON(VIDEOS_FILE);
-    const filtered = videos.filter(v => v.id !== id);
-    
-    if (filtered.length === videos.length) {
-        return res.status(404).json({ error: 'Video not found' });
-    }
-    
-    writeJSON(VIDEOS_FILE, filtered);
-    console.log(`🗑️ Video deleted: ${id}`);
-    res.json({ success: true });
-});
-
-/**
- * Get admin dashboard statistics
- */
-app.get('/api/admin/stats', (req, res) => {
-    const users = readJSON(USERS_FILE);
-    const videos = readJSON(VIDEOS_FILE);
-    const transactions = readJSON(TRANSACTIONS_FILE);
-    
-    const paidUsers = users.filter(u => u.paid);
-    const totalRevenue = paidUsers.reduce((sum, u) => sum + (u.paidAmount || 1000), 0);
     
     res.json({
-        totalUsers: users.length,
-        paidUsers: paidUsers.length,
-        totalVideos: videos.length,
-        totalRevenue: totalRevenue,
-        pendingPayments: pendingPayments.size,
-        recentUsers: users.slice(-10).reverse(),
-        recentTransactions: transactions.slice(-10).reverse()
+        valid: true,
+        user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            paid: user.paid,
+            role: user.role
+        }
     });
 });
 
-/**
- * Get all modules
- */
-app.get('/api/admin/modules', (req, res) => {
-    const modules = readJSON(MODULES_FILE);
-    res.json(modules);
-});
-
-// ============ USER PROTECTED ROUTES ============
-
-/**
- * Get videos for authenticated users (must be paid)
- */
-app.get('/api/user/videos', (req, res) => {
-    const token = req.headers.authorization?.split(' ')[1];
-    
-    if (!token) {
-        return res.status(401).json({ error: 'Unauthorized. Please log in.' });
-    }
-    
-    try {
-        const decoded = jwt.verify(token, SECRET);
-        const users = readJSON(USERS_FILE);
-        const user = users.find(u => u.id === decoded.id);
-        
-        if (!user) {
-            return res.status(401).json({ error: 'User not found' });
-        }
-        
-        if (!user.paid) {
-            return res.status(403).json({ 
-                error: 'Payment required. Please complete your payment to access content.',
-                paid: false 
-            });
-        }
-        
-        const videos = readJSON(VIDEOS_FILE);
-        const modules = readJSON(MODULES_FILE);
-        
-        res.json({
-            videos: videos,
-            modules: modules,
-            user: {
-                name: user.name,
-                email: user.email,
-                paid: true,
-                paidAt: user.paidAt
-            }
-        });
-    } catch (error) {
-        console.error('❌ Token verification error:', error.message);
-        res.status(401).json({ error: 'Invalid or expired token' });
-    }
-});
-
-/**
- * Get user profile
- */
-app.get('/api/user/profile', (req, res) => {
-    const token = req.headers.authorization?.split(' ')[1];
+app.post('/api/auth/change-password', async function(req, res) {
+    const authHeader = req.headers.authorization;
+    const token = authHeader ? authHeader.split(' ')[1] : null;
+    const currentPassword = req.body.currentPassword;
+    const newPassword = req.body.newPassword;
     
     if (!token) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
     
-    try {
-        const decoded = jwt.verify(token, SECRET);
-        const users = readJSON(USERS_FILE);
-        const user = users.find(u => u.id === decoded.id);
+    const decoded = verifyToken(token);
+    if (!decoded) {
+        return res.status(401).json({ error: 'Invalid token' });
+    }
+    
+    const users = readJSON(USERS_FILE);
+    const user = users.find(function(u) {
+        return u.id === decoded.id;
+    });
+    
+    if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const validPassword = await bcrypt.compare(currentPassword, user.password);
+    if (!validPassword) {
+        return res.status(400).json({ error: 'Current password is incorrect' });
+    }
+    
+    if (!validatePassword(newPassword)) {
+        return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    }
+    
+    user.password = await bcrypt.hash(newPassword, 10);
+    writeJSON(USERS_FILE, users);
+    
+    logActivity(user.id, 'CHANGE_PASSWORD', {});
+    res.json({ success: true, message: 'Password changed successfully' });
+});
+
+app.post('/api/auth/forgot-password', async function(req, res) {
+    const email = req.body.email;
+    
+    const users = readJSON(USERS_FILE);
+    const user = users.find(function(u) {
+        return u.email === email?.toLowerCase();
+    });
+    
+    if (!user) {
+        return res.json({ success: true, message: 'If email exists, reset link will be sent' });
+    }
+    
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetExpiry = new Date(Date.now() + 3600000).toISOString();
+    
+    user.resetToken = resetToken;
+    user.resetExpiry = resetExpiry;
+    writeJSON(USERS_FILE, users);
+    
+    console.log('Password reset token for ' + email + ': ' + resetToken);
+    
+    res.json({ success: true, message: 'Password reset link sent to your email' });
+});
+
+app.post('/api/auth/reset-password', async function(req, res) {
+    const token = req.body.token;
+    const newPassword = req.body.newPassword;
+    
+    const users = readJSON(USERS_FILE);
+    const user = users.find(function(u) {
+        return u.resetToken === token && new Date(u.resetExpiry) > new Date();
+    });
+    
+    if (!user) {
+        return res.status(400).json({ error: 'Invalid or expired reset token' });
+    }
+    
+    if (!validatePassword(newPassword)) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+    
+    user.password = await bcrypt.hash(newPassword, 10);
+    delete user.resetToken;
+    delete user.resetExpiry;
+    writeJSON(USERS_FILE, users);
+    
+    res.json({ success: true, message: 'Password reset successfully' });
+});
+
+// ============ USER PROFILE ============
+app.get('/api/user/profile', function(req, res) {
+    const authHeader = req.headers.authorization;
+    const token = authHeader ? authHeader.split(' ')[1] : null;
+    
+    if (!token) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    const decoded = verifyToken(token);
+    if (!decoded) {
+        return res.status(401).json({ error: 'Invalid token' });
+    }
+    
+    const users = readJSON(USERS_FILE);
+    const user = users.find(function(u) {
+        return u.id === decoded.id;
+    });
+    
+    if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.json({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        paid: user.paid,
+        paidAt: user.paidAt,
+        createdAt: user.createdAt,
+        lastLogin: user.lastLogin,
+        courseProgress: user.courseProgress || {},
+        certificates: user.certificates || [],
+        bio: user.bio || null,
+        profilePicture: user.profilePicture || null
+    });
+});
+
+app.put('/api/user/profile', function(req, res) {
+    const authHeader = req.headers.authorization;
+    const token = authHeader ? authHeader.split(' ')[1] : null;
+    const name = req.body.name;
+    const phone = req.body.phone;
+    const bio = req.body.bio;
+    
+    if (!token) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    const decoded = verifyToken(token);
+    if (!decoded) {
+        return res.status(401).json({ error: 'Invalid token' });
+    }
+    
+    const users = readJSON(USERS_FILE);
+    const userIndex = users.findIndex(function(u) {
+        return u.id === decoded.id;
+    });
+    
+    if (userIndex === -1) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+    
+    if (name) users[userIndex].name = name;
+    if (phone) users[userIndex].phone = phone;
+    if (bio !== undefined) users[userIndex].bio = bio;
+    
+    writeJSON(USERS_FILE, users);
+    logActivity(users[userIndex].id, 'PROFILE_UPDATED', {});
+    
+    res.json({ success: true, user: users[userIndex] });
+});
+
+// ============ COURSE MANAGEMENT ============
+app.get('/api/courses', function(req, res) {
+    const modules = readJSON(MODULES_FILE);
+    const videos = readJSON(VIDEOS_FILE);
+    
+    const coursesWithVideos = modules.map(function(module) {
+        const moduleVideos = videos.filter(function(v) {
+            return v.moduleId === module.id;
+        });
+        return {
+            id: module.id,
+            number: module.number,
+            title: module.title,
+            description: module.description,
+            icon: module.icon,
+            status: module.status,
+            order: module.order,
+            videos: moduleVideos,
+            videoCount: moduleVideos.length
+        };
+    });
+    
+    res.json(coursesWithVideos);
+});
+
+app.get('/api/courses/:moduleId', function(req, res) {
+    const moduleId = req.params.moduleId;
+    const modules = readJSON(MODULES_FILE);
+    const videos = readJSON(VIDEOS_FILE);
+    
+    const module = modules.find(function(m) {
+        return m.id === moduleId;
+    });
+    
+    if (!module) {
+        return res.status(404).json({ error: 'Module not found' });
+    }
+    
+    const moduleVideos = videos.filter(function(v) {
+        return v.moduleId === moduleId;
+    });
+    
+    res.json({
+        id: module.id,
+        number: module.number,
+        title: module.title,
+        description: module.description,
+        icon: module.icon,
+        status: module.status,
+        videos: moduleVideos
+    });
+});
+
+app.post('/api/courses/progress', function(req, res) {
+    const authHeader = req.headers.authorization;
+    const token = authHeader ? authHeader.split(' ')[1] : null;
+    const videoId = req.body.videoId;
+    const completed = req.body.completed;
+    const progress = req.body.progress;
+    
+    if (!token) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    const decoded = verifyToken(token);
+    if (!decoded) {
+        return res.status(401).json({ error: 'Invalid token' });
+    }
+    
+    const users = readJSON(USERS_FILE);
+    const userIndex = users.findIndex(function(u) {
+        return u.id === decoded.id;
+    });
+    
+    if (userIndex === -1) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+    
+    if (!users[userIndex].courseProgress) {
+        users[userIndex].courseProgress = {};
+    }
+    
+    if (!users[userIndex].courseProgress[videoId]) {
+        users[userIndex].courseProgress[videoId] = {};
+    }
+    
+    if (completed !== undefined) {
+        users[userIndex].courseProgress[videoId].completed = completed;
+    }
+    if (progress !== undefined) {
+        users[userIndex].courseProgress[videoId].progress = progress;
+    }
+    users[userIndex].courseProgress[videoId].lastWatched = new Date().toISOString();
+    
+    writeJSON(USERS_FILE, users);
+    
+    res.json({ success: true, progress: users[userIndex].courseProgress });
+});
+
+app.get('/api/courses/progress', function(req, res) {
+    const authHeader = req.headers.authorization;
+    const token = authHeader ? authHeader.split(' ')[1] : null;
+    
+    if (!token) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    const decoded = verifyToken(token);
+    if (!decoded) {
+        return res.status(401).json({ error: 'Invalid token' });
+    }
+    
+    const users = readJSON(USERS_FILE);
+    const user = users.find(function(u) {
+        return u.id === decoded.id;
+    });
+    
+    if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const videos = readJSON(VIDEOS_FILE);
+    const totalVideos = videos.length;
+    const userProgress = user.courseProgress || {};
+    const completedVideos = Object.values(userProgress).filter(function(p) {
+        return p.completed === true;
+    }).length;
+    const overallProgress = totalVideos > 0 ? (completedVideos / totalVideos) * 100 : 0;
+    
+    res.json({
+        success: true,
+        progress: userProgress,
+        stats: {
+            totalVideos: totalVideos,
+            completedVideos: completedVideos,
+            overallProgress: Math.round(overallProgress)
+        }
+    });
+});
+
+// ============ PAYMENT SYSTEM ============
+app.post('/api/payments/initiate', async function(req, res) {
+    const authHeader = req.headers.authorization;
+    const token = authHeader ? authHeader.split(' ')[1] : null;
+    const phone = req.body.phone;
+    const amount = req.body.amount;
+    const email = req.body.email;
+    
+    console.log('💰 Payment initiation request:', { phone: phone, amount: amount, email: email, hasToken: !!token });
+    
+    if (!token) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    const decoded = verifyToken(token);
+    if (!decoded) {
+        return res.status(401).json({ error: 'Invalid token' });
+    }
+    
+    const users = readJSON(USERS_FILE);
+    const user = users.find(function(u) {
+        return u.id === decoded.id;
+    });
+    
+    if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const formattedPhone = formatPhoneNumber(phone || user.phone);
+    if (!formattedPhone || formattedPhone.length !== 12) {
+        return res.status(400).json({ error: 'Invalid phone number format. Use 2547XXXXXXXX' });
+    }
+    
+    const paymentAmount = amount || 1000;
+    const userEmail = email || user.email;
+    
+    const hasRealCreds = process.env.MPESA_CONSUMER_KEY && 
+                         process.env.MPESA_CONSUMER_KEY !== 'YOUR_ACTUAL_CONSUMER_KEY_HERE';
+    
+    if (!hasRealCreds) {
+        const checkoutId = 'SIM_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
         
-        if (!user) {
-            return res.status(401).json({ error: 'User not found' });
+        let payments = readJSON(PAYMENTS_FILE);
+        if (!Array.isArray(payments)) {
+            payments = [];
         }
         
-        res.json({
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            phone: user.phone,
-            paid: user.paid,
-            paidAt: user.paidAt,
-            createdAt: user.createdAt
+        const payment = {
+            id: checkoutId,
+            userId: user.id,
+            email: userEmail,
+            amount: paymentAmount,
+            phone: formattedPhone,
+            status: 'processing',
+            createdAt: new Date().toISOString()
+        };
+        
+        payments.push(payment);
+        writeJSON(PAYMENTS_FILE, payments);
+        
+        console.log('🔵 SIMULATION: Payment initiated for ' + userEmail + ' - Amount: ' + paymentAmount);
+        
+        setTimeout(function() {
+            let updatePayments = readJSON(PAYMENTS_FILE);
+            if (!Array.isArray(updatePayments)) {
+                updatePayments = [];
+            }
+            const foundPayment = updatePayments.find(function(p) {
+                return p.id === checkoutId;
+            });
+            if (foundPayment) {
+                foundPayment.status = 'completed';
+                foundPayment.completedAt = new Date().toISOString();
+                writeJSON(PAYMENTS_FILE, updatePayments);
+                
+                let updateUsers = readJSON(USERS_FILE);
+                if (!Array.isArray(updateUsers)) {
+                    updateUsers = [];
+                }
+                const targetUser = updateUsers.find(function(u) {
+                    return u.id === user.id;
+                });
+                if (targetUser && !targetUser.paid) {
+                    targetUser.paid = true;
+                    targetUser.paidAt = new Date().toISOString();
+                    targetUser.paymentMethod = 'simulation';
+                    targetUser.paymentAmount = paymentAmount;
+                    writeJSON(USERS_FILE, updateUsers);
+                    console.log('✅✅ User ' + user.email + ' marked as PAID! (simulation)');
+                }
+            }
+        }, 3000);
+        
+        return res.json({
+            success: true,
+            message: 'Payment initiated (simulation mode)',
+            checkoutId: checkoutId,
+            amount: paymentAmount,
+            status: 'processing'
         });
+    }
+    
+    try {
+        const mpesaToken = await getMpesaToken();
+        if (!mpesaToken) {
+            return res.status(500).json({ error: 'Payment service unavailable' });
+        }
+        
+        const timestamp = getTimestamp();
+        const shortcode = process.env.MPESA_SHORTCODE;
+        const passkey = process.env.MPESA_PASSKEY;
+        const password = Buffer.from(shortcode + passkey + timestamp).toString('base64');
+        const callbackUrl = (process.env.MPESA_CALLBACK_URL || 'http://localhost:' + PORT) + '/api/payments/callback';
+        
+        const response = await axios.post(
+            'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
+            {
+                BusinessShortCode: shortcode,
+                Password: password,
+                Timestamp: timestamp,
+                TransactionType: 'CustomerPayBillOnline',
+                Amount: Math.round(paymentAmount),
+                PartyA: formattedPhone,
+                PartyB: shortcode,
+                PhoneNumber: formattedPhone,
+                CallBackURL: callbackUrl,
+                AccountReference: userEmail.split('@')[0],
+                TransactionDesc: 'Abdirizak Academy Payment'
+            },
+            {
+                headers: { 'Authorization': 'Bearer ' + mpesaToken, 'Content-Type': 'application/json' },
+                timeout: 30000
+            }
+        );
+        
+        if (response.data.ResponseCode === '0') {
+            const checkoutId = response.data.CheckoutRequestID;
+            
+            let payments = readJSON(PAYMENTS_FILE);
+            if (!Array.isArray(payments)) {
+                payments = [];
+            }
+            
+            const payment = {
+                id: checkoutId,
+                userId: user.id,
+                email: userEmail,
+                amount: paymentAmount,
+                phone: formattedPhone,
+                status: 'pending',
+                createdAt: new Date().toISOString(),
+                mpesaResponse: response.data
+            };
+            
+            payments.push(payment);
+            writeJSON(PAYMENTS_FILE, payments);
+            
+            let transactions = readJSON(TRANSACTIONS_FILE);
+            if (!Array.isArray(transactions)) {
+                transactions = [];
+            }
+            transactions.push({
+                id: checkoutId,
+                userId: user.id,
+                email: userEmail,
+                amount: paymentAmount,
+                type: 'mpesa',
+                status: 'pending',
+                createdAt: new Date().toISOString()
+            });
+            writeJSON(TRANSACTIONS_FILE, transactions);
+            
+            console.log('✅ STK Push sent! CheckoutID: ' + checkoutId);
+            
+            res.json({
+                success: true,
+                message: 'STK Push sent. Check your phone for the M-Pesa prompt.',
+                checkoutId: checkoutId,
+                amount: paymentAmount,
+                status: 'pending'
+            });
+        } else {
+            throw new Error(response.data.ResponseDescription || 'Payment initiation failed');
+        }
     } catch (error) {
-        res.status(401).json({ error: 'Invalid token' });
+        console.error('Payment error:', error);
+        res.status(500).json({ error: error.message || 'Payment processing failed' });
     }
 });
 
-// ============ ADMIN AUTH ============
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@abdirizakacademy.com';
-const ADMIN_PASSWORD_HASH = bcrypt.hashSync(process.env.ADMIN_PASSWORD || 'admin123', 10);
+app.get('/api/payments/status/:checkoutId', function(req, res) {
+    const checkoutId = req.params.checkoutId;
+    
+    console.log('🔍 Checking payment status:', checkoutId);
+    
+    let payments = readJSON(PAYMENTS_FILE);
+    if (!Array.isArray(payments)) {
+        payments = [];
+    }
+    const payment = payments.find(function(p) {
+        return p.id === checkoutId;
+    });
+    
+    if (!payment) {
+        return res.status(404).json({ error: 'Payment not found' });
+    }
+    
+    res.json({
+        success: true,
+        status: payment.status,
+        amount: payment.amount,
+        receipt: payment.receipt,
+        createdAt: payment.createdAt,
+        completedAt: payment.completedAt
+    });
+});
 
-/**
- * Admin login
- */
-app.post('/api/admin/login', async (req, res) => {
-    const { email, password } = req.body;
+app.get('/api/payments/history', function(req, res) {
+    const authHeader = req.headers.authorization;
+    const token = authHeader ? authHeader.split(' ')[1] : null;
+    
+    if (!token) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    const decoded = verifyToken(token);
+    if (!decoded) {
+        return res.status(401).json({ error: 'Invalid token' });
+    }
+    
+    let payments = readJSON(PAYMENTS_FILE);
+    if (!Array.isArray(payments)) {
+        payments = [];
+    }
+    const userPayments = payments.filter(function(p) {
+        return p.userId === decoded.id;
+    });
+    
+    res.json({
+        success: true,
+        payments: userPayments.map(function(p) {
+            return {
+                id: p.id,
+                amount: p.amount,
+                status: p.status,
+                createdAt: p.createdAt,
+                completedAt: p.completedAt,
+                receipt: p.receipt
+            };
+        })
+    });
+});
+
+app.post('/api/payments/callback', function(req, res) {
+    console.log('📞 Payment callback received:', JSON.stringify(req.body, null, 2));
+    
+    const body = req.body;
+    
+    if (body && body.Body && body.Body.stkCallback) {
+        const stkCallback = body.Body.stkCallback;
+        const ResultCode = stkCallback.ResultCode;
+        const ResultDesc = stkCallback.ResultDesc;
+        const CheckoutRequestID = stkCallback.CheckoutRequestID;
+        const CallbackMetadata = stkCallback.CallbackMetadata;
+        
+        let payments = readJSON(PAYMENTS_FILE);
+        if (!Array.isArray(payments)) {
+            payments = [];
+        }
+        const paymentIndex = payments.findIndex(function(p) {
+            return p.id === CheckoutRequestID;
+        });
+        
+        if (paymentIndex !== -1) {
+            payments[paymentIndex].status = ResultCode === 0 ? 'completed' : 'failed';
+            payments[paymentIndex].resultDesc = ResultDesc;
+            payments[paymentIndex].callbackReceivedAt = new Date().toISOString();
+            
+            if (ResultCode === 0 && CallbackMetadata) {
+                const metadata = {};
+                CallbackMetadata.Item.forEach(function(item) {
+                    metadata[item.Name] = item.Value;
+                });
+                payments[paymentIndex].metadata = metadata;
+                payments[paymentIndex].receipt = metadata.MpesaReceiptNumber;
+                
+                let users = readJSON(USERS_FILE);
+                if (!Array.isArray(users)) {
+                    users = [];
+                }
+                const userIndex = users.findIndex(function(u) {
+                    return u.id === payments[paymentIndex].userId;
+                });
+                if (userIndex !== -1 && !users[userIndex].paid) {
+                    users[userIndex].paid = true;
+                    users[userIndex].paidAt = new Date().toISOString();
+                    users[userIndex].paymentMethod = 'mpesa';
+                    users[userIndex].paymentAmount = payments[paymentIndex].amount;
+                    users[userIndex].mpesaReceipt = metadata.MpesaReceiptNumber;
+                    writeJSON(USERS_FILE, users);
+                    console.log('✅✅ User ' + users[userIndex].email + ' marked as PAID!');
+                }
+                
+                let transactions = readJSON(TRANSACTIONS_FILE);
+                if (!Array.isArray(transactions)) {
+                    transactions = [];
+                }
+                const transactionIndex = transactions.findIndex(function(t) {
+                    return t.id === CheckoutRequestID;
+                });
+                if (transactionIndex !== -1) {
+                    transactions[transactionIndex].status = 'completed';
+                    transactions[transactionIndex].completedAt = new Date().toISOString();
+                    transactions[transactionIndex].receipt = metadata.MpesaReceiptNumber;
+                    writeJSON(TRANSACTIONS_FILE, transactions);
+                }
+            }
+            
+            writeJSON(PAYMENTS_FILE, payments);
+        }
+    }
+    
+    res.json({ ResultCode: 0, ResultDesc: 'Success' });
+});
+
+// ============ CERTIFICATE SYSTEM ============
+app.post('/api/certificates/generate', function(req, res) {
+    const authHeader = req.headers.authorization;
+    const token = authHeader ? authHeader.split(' ')[1] : null;
+    const moduleId = req.body.moduleId;
+    
+    if (!token) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    const decoded = verifyToken(token);
+    if (!decoded) {
+        return res.status(401).json({ error: 'Invalid token' });
+    }
+    
+    const users = readJSON(USERS_FILE);
+    const user = users.find(function(u) {
+        return u.id === decoded.id;
+    });
+    
+    if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+    
+    if (!user.paid) {
+        return res.status(403).json({ error: 'Payment required to generate certificates' });
+    }
+    
+    const modules = readJSON(MODULES_FILE);
+    const module = modules.find(function(m) {
+        return m.id === moduleId;
+    });
+    
+    if (!module) {
+        return res.status(404).json({ error: 'Module not found' });
+    }
+    
+    const certificates = readJSON(CERTIFICATES_FILE);
+    
+    const existing = certificates.find(function(c) {
+        return c.userId === user.id && c.moduleId === moduleId;
+    });
+    if (existing) {
+        return res.json({ success: true, certificate: existing });
+    }
+    
+    const certificate = {
+        id: 'cert_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex'),
+        userId: user.id,
+        userName: user.name,
+        moduleId: module.id,
+        moduleTitle: module.title,
+        issuedAt: new Date().toISOString(),
+        certificateNumber: 'ABZ-' + Date.now() + '-' + user.id.slice(-6)
+    };
+    
+    certificates.push(certificate);
+    writeJSON(CERTIFICATES_FILE, certificates);
+    
+    if (!user.certificates) {
+        user.certificates = [];
+    }
+    user.certificates.push(certificate.id);
+    writeJSON(USERS_FILE, users);
+    
+    logActivity(user.id, 'CERTIFICATE_GENERATED', { moduleId: moduleId, certificateId: certificate.id });
+    
+    res.json({ success: true, certificate: certificate });
+});
+
+app.get('/api/certificates', function(req, res) {
+    const authHeader = req.headers.authorization;
+    const token = authHeader ? authHeader.split(' ')[1] : null;
+    
+    if (!token) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    const decoded = verifyToken(token);
+    if (!decoded) {
+        return res.status(401).json({ error: 'Invalid token' });
+    }
+    
+    const certificates = readJSON(CERTIFICATES_FILE);
+    const userCertificates = certificates.filter(function(c) {
+        return c.userId === decoded.id;
+    });
+    
+    res.json({ success: true, certificates: userCertificates });
+});
+
+// ============ ADMIN SYSTEM ============
+const ADMIN_EMAIL = 'admin@abdirizakacademy.com';
+const ADMIN_PASSWORD_HASH = bcrypt.hashSync('admin123', 10);
+
+app.post('/api/admin/login', async function(req, res) {
+    const email = req.body.email;
+    const password = req.body.password;
+    
+    console.log('🔐 Admin login attempt:', email);
     
     if (email !== ADMIN_EMAIL) {
         return res.status(401).json({ error: 'Invalid credentials' });
@@ -995,72 +1144,512 @@ app.post('/api/admin/login', async (req, res) => {
         return res.status(401).json({ error: 'Invalid credentials' });
     }
     
-    const token = jwt.sign({ role: 'admin', email }, SECRET, { expiresIn: '30d' });
-    res.json({ token });
+    const token = generateToken('admin', email, 'admin');
+    console.log('✅ Admin logged in successfully');
+    res.json({ token: token });
 });
 
-/**
- * Verify admin token
- */
-app.get('/api/admin/verify', (req, res) => {
-    const token = req.headers.authorization?.split(' ')[1];
+app.get('/api/admin/verify', function(req, res) {
+    const authHeader = req.headers.authorization;
+    const token = authHeader ? authHeader.split(' ')[1] : null;
     
     if (!token) {
         return res.status(401).json({ valid: false });
     }
     
-    try {
-        const decoded = jwt.verify(token, SECRET);
-        if (decoded.role !== 'admin') {
-            return res.status(403).json({ valid: false });
-        }
-        res.json({ valid: true });
-    } catch {
-        res.status(401).json({ valid: false });
-    }
+    const decoded = verifyToken(token);
+    res.json({ valid: !!decoded, role: decoded ? decoded.role : null });
 });
 
-// ============ ERROR HANDLING MIDDLEWARE ============
-app.use((err, req, res, next) => {
-    console.error('❌ Unhandled error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+app.get('/api/admin/users', function(req, res) {
+    const users = readJSON(USERS_FILE);
+    const safeUsers = users.map(function(u) {
+        return {
+            id: u.id,
+            name: u.name,
+            email: u.email,
+            phone: u.phone,
+            paid: u.paid,
+            paidAt: u.paidAt,
+            paymentMethod: u.paymentMethod,
+            createdAt: u.createdAt,
+            lastLogin: u.lastLogin
+        };
+    });
+    res.json(safeUsers);
+});
+
+app.get('/api/admin/stats', function(req, res) {
+    const users = readJSON(USERS_FILE);
+    const payments = readJSON(PAYMENTS_FILE);
+    const videos = readJSON(VIDEOS_FILE);
+    const certificates = readJSON(CERTIFICATES_FILE);
+    const modules = readJSON(MODULES_FILE);
+    
+    const paidUsers = users.filter(function(u) {
+        return u.paid === true;
+    });
+    const completedPayments = payments.filter(function(p) {
+        return p.status === 'completed';
+    });
+    const totalRevenue = completedPayments.reduce(function(sum, p) {
+        return sum + (p.amount || 0);
+    }, 0);
+    
+    const last30Days = new Date();
+    last30Days.setDate(last30Days.getDate() - 30);
+    const recentUsers = users.filter(function(u) {
+        return new Date(u.createdAt) > last30Days;
+    });
+    const recentPayments = completedPayments.filter(function(p) {
+        return new Date(p.completedAt) > last30Days;
+    });
+    
+    res.json({
+        overview: {
+            totalUsers: users.length,
+            paidUsers: paidUsers.length,
+            conversionRate: users.length ? ((paidUsers.length / users.length) * 100).toFixed(2) : 0,
+            totalRevenue: totalRevenue,
+            averagePayment: paidUsers.length ? (totalRevenue / paidUsers.length).toFixed(2) : 0
+        },
+        payments: {
+            total: payments.length,
+            completed: completedPayments.length,
+            pending: payments.filter(function(p) { return p.status === 'pending'; }).length,
+            failed: payments.filter(function(p) { return p.status === 'failed'; }).length,
+            last30DaysRevenue: recentPayments.reduce(function(sum, p) {
+                return sum + (p.amount || 0);
+            }, 0)
+        },
+        courses: {
+            totalModules: modules.length,
+            totalVideos: videos.length,
+            totalCertificates: certificates.length
+        },
+        recent: {
+            users: recentUsers.slice(-5).map(function(u) {
+                return { name: u.name, email: u.email, createdAt: u.createdAt };
+            }),
+            payments: recentPayments.slice(-5).map(function(p) {
+                return { amount: p.amount, email: p.email, completedAt: p.completedAt };
+            })
+        }
+    });
+});
+
+app.put('/api/admin/users/:userId', function(req, res) {
+    const userId = req.params.userId;
+    const paid = req.body.paid;
+    const name = req.body.name;
+    const email = req.body.email;
+    const phone = req.body.phone;
+    
+    const users = readJSON(USERS_FILE);
+    const userIndex = users.findIndex(function(u) {
+        return u.id === userId;
+    });
+    
+    if (userIndex === -1) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+    
+    if (paid !== undefined) {
+        users[userIndex].paid = paid;
+        if (paid === true && !users[userIndex].paidAt) {
+            users[userIndex].paidAt = new Date().toISOString();
+            users[userIndex].paymentMethod = 'admin_manual';
+        }
+    }
+    if (name) users[userIndex].name = name;
+    if (email) users[userIndex].email = email;
+    if (phone) users[userIndex].phone = phone;
+    
+    writeJSON(USERS_FILE, users);
+    
+    res.json({ success: true, user: users[userIndex] });
+});
+
+app.delete('/api/admin/users/:userId', function(req, res) {
+    const userId = req.params.userId;
+    
+    const users = readJSON(USERS_FILE);
+    const filteredUsers = users.filter(function(u) {
+        return u.id !== userId;
+    });
+    
+    if (filteredUsers.length === users.length) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+    
+    writeJSON(USERS_FILE, filteredUsers);
+    
+    res.json({ success: true, message: 'User deleted successfully' });
+});
+
+app.post('/api/admin/mark-paid', function(req, res) {
+    const email = req.body.email;
+    
+    const users = readJSON(USERS_FILE);
+    const userIndex = users.findIndex(function(u) {
+        return u.email === email;
+    });
+    
+    if (userIndex === -1) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+    
+    users[userIndex].paid = true;
+    users[userIndex].paidAt = new Date().toISOString();
+    users[userIndex].paymentMethod = 'admin_manual';
+    writeJSON(USERS_FILE, users);
+    
+    logActivity(users[userIndex].id, 'ADMIN_MARKED_PAID', {});
+    res.json({ success: true, message: 'User ' + email + ' marked as paid' });
+});
+
+// ============ VIDEO MANAGEMENT (ADMIN) ============
+app.get('/api/admin/videos', function(req, res) {
+    const videos = readJSON(VIDEOS_FILE);
+    res.json(videos);
+});
+
+app.post('/api/admin/videos', function(req, res) {
+    const moduleId = req.body.moduleId;
+    const title = req.body.title;
+    const url = req.body.url;
+    const duration = req.body.duration;
+    const description = req.body.description;
+    const order = req.body.order;
+    
+    if (!title || !url) {
+        return res.status(400).json({ error: 'Title and URL are required' });
+    }
+    
+    const videos = readJSON(VIDEOS_FILE);
+    const newVideo = {
+        id: 'vid_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex'),
+        moduleId: moduleId || 'mod_1',
+        title: title.trim(),
+        url: url,
+        duration: duration || 0,
+        description: description || '',
+        order: order || videos.length + 1,
+        createdAt: new Date().toISOString()
+    };
+    
+    videos.push(newVideo);
+    writeJSON(VIDEOS_FILE, videos);
+    
+    res.json({ success: true, video: newVideo });
+});
+
+app.put('/api/admin/videos/:videoId', function(req, res) {
+    const videoId = req.params.videoId;
+    const updates = req.body;
+    
+    const videos = readJSON(VIDEOS_FILE);
+    const videoIndex = videos.findIndex(function(v) {
+        return v.id === videoId;
+    });
+    
+    if (videoIndex === -1) {
+        return res.status(404).json({ error: 'Video not found' });
+    }
+    
+    videos[videoIndex] = Object.assign({}, videos[videoIndex], updates);
+    writeJSON(VIDEOS_FILE, videos);
+    
+    res.json({ success: true, video: videos[videoIndex] });
+});
+
+app.delete('/api/admin/videos/:videoId', function(req, res) {
+    const videoId = req.params.videoId;
+    
+    const videos = readJSON(VIDEOS_FILE);
+    const filteredVideos = videos.filter(function(v) {
+        return v.id !== videoId;
+    });
+    
+    if (filteredVideos.length === videos.length) {
+        return res.status(404).json({ error: 'Video not found' });
+    }
+    
+    writeJSON(VIDEOS_FILE, filteredVideos);
+    
+    res.json({ success: true, message: 'Video deleted successfully' });
+});
+
+// ============ MODULE MANAGEMENT (ADMIN) ============
+app.get('/api/admin/modules', function(req, res) {
+    const modules = readJSON(MODULES_FILE);
+    res.json(modules);
+});
+
+app.post('/api/admin/modules', function(req, res) {
+    const number = req.body.number;
+    const title = req.body.title;
+    const description = req.body.description;
+    const icon = req.body.icon;
+    const status = req.body.status;
+    
+    if (!title) {
+        return res.status(400).json({ error: 'Title is required' });
+    }
+    
+    const modules = readJSON(MODULES_FILE);
+    const newModule = {
+        id: 'mod_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex'),
+        number: number || modules.length + 1,
+        title: title.trim(),
+        description: description || '',
+        icon: icon || '📚',
+        status: status || 'active',
+        order: modules.length + 1,
+        createdAt: new Date().toISOString()
+    };
+    
+    modules.push(newModule);
+    writeJSON(MODULES_FILE, modules);
+    
+    res.json({ success: true, module: newModule });
+});
+
+app.put('/api/admin/modules/:moduleId', function(req, res) {
+    const moduleId = req.params.moduleId;
+    const updates = req.body;
+    
+    const modules = readJSON(MODULES_FILE);
+    const moduleIndex = modules.findIndex(function(m) {
+        return m.id === moduleId;
+    });
+    
+    if (moduleIndex === -1) {
+        return res.status(404).json({ error: 'Module not found' });
+    }
+    
+    modules[moduleIndex] = Object.assign({}, modules[moduleIndex], updates);
+    writeJSON(MODULES_FILE, modules);
+    
+    res.json({ success: true, module: modules[moduleIndex] });
+});
+
+app.delete('/api/admin/modules/:moduleId', function(req, res) {
+    const moduleId = req.params.moduleId;
+    
+    const modules = readJSON(MODULES_FILE);
+    const filteredModules = modules.filter(function(m) {
+        return m.id !== moduleId;
+    });
+    
+    if (filteredModules.length === modules.length) {
+        return res.status(404).json({ error: 'Module not found' });
+    }
+    
+    writeJSON(MODULES_FILE, filteredModules);
+    
+    res.json({ success: true, message: 'Module deleted successfully' });
+});
+
+// ============ BACKUP AND EXPORT ============
+app.post('/api/admin/backup', function(req, res) {
+    const backupPath = createBackup();
+    res.json({ success: true, backupPath: backupPath });
+});
+
+app.get('/api/admin/export/:type', function(req, res) {
+    const type = req.params.type;
+    let data;
+    
+    switch(type) {
+        case 'users':
+            data = readJSON(USERS_FILE);
+            break;
+        case 'payments':
+            data = readJSON(PAYMENTS_FILE);
+            break;
+        case 'transactions':
+            data = readJSON(TRANSACTIONS_FILE);
+            break;
+        case 'certificates':
+            data = readJSON(CERTIFICATES_FILE);
+            break;
+        default:
+            return res.status(400).json({ error: 'Invalid export type' });
+    }
+    
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename=' + type + '_export_' + Date.now() + '.json');
+    res.json(data);
+});
+
+app.get('/api/admin/logs', function(req, res) {
+    const limit = parseInt(req.query.limit) || 100;
+    const userId = req.query.userId;
+    const action = req.query.action;
+    
+    let logs = readJSON(ACTIVITY_FILE);
+    
+    if (userId) {
+        logs = logs.filter(function(l) {
+            return l.userId === userId;
+        });
+    }
+    if (action) {
+        logs = logs.filter(function(l) {
+            return l.action === action;
+        });
+    }
+    
+    res.json(logs.slice(-limit));
+});
+
+// ============ COUPON SYSTEM ============
+app.post('/api/admin/coupons', function(req, res) {
+    const code = req.body.code;
+    const discountPercent = req.body.discountPercent;
+    const expiryDate = req.body.expiryDate;
+    
+    const coupons = readJSON(COUPONS_FILE);
+    const newCoupon = {
+        id: crypto.randomBytes(8).toString('hex'),
+        code: code.toUpperCase(),
+        discountPercent: discountPercent,
+        expiryDate: expiryDate,
+        active: true,
+        createdAt: new Date().toISOString()
+    };
+    
+    coupons.push(newCoupon);
+    writeJSON(COUPONS_FILE, coupons);
+    
+    res.json({ success: true, coupon: newCoupon });
+});
+
+app.get('/api/coupons/validate/:code', function(req, res) {
+    const code = req.params.code;
+    const coupons = readJSON(COUPONS_FILE);
+    const coupon = coupons.find(function(c) {
+        return c.code === code.toUpperCase() && c.active && new Date(c.expiryDate) > new Date();
+    });
+    
+    if (!coupon) {
+        return res.status(404).json({ valid: false, error: 'Invalid or expired coupon' });
+    }
+    
+    res.json({ valid: true, discountPercent: coupon.discountPercent });
+});
+
+// ============ HEALTH CHECKS ============
+app.get('/api/health', function(req, res) {
+    const settings = readJSON(SETTINGS_FILE);
+    
+    res.json({
+        status: settings.maintenanceMode ? 'maintenance' : 'healthy',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        version: '3.0.0',
+        services: {
+            mpesa: process.env.MPESA_CONSUMER_KEY ? 'configured' : 'not_configured',
+            database: 'connected',
+            storage: 'healthy'
+        }
+    });
+});
+
+app.get('/api/health/detailed', function(req, res) {
+    const users = readJSON(USERS_FILE);
+    const payments = readJSON(PAYMENTS_FILE);
+    
+    res.json({
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        system: {
+            memory: process.memoryUsage(),
+            cpu: process.cpuUsage(),
+            uptime: process.uptime(),
+            nodeVersion: process.version
+        },
+        database: {
+            users: users.length,
+            payments: payments.length,
+            backups: fs.readdirSync(BACKUP_DIR).length
+        }
+    });
+});
+
+// ============ MAINTENANCE MODE ============
+app.get('/api/settings', function(req, res) {
+    const settings = readJSON(SETTINGS_FILE);
+    res.json(settings);
+});
+
+app.post('/api/admin/maintenance', function(req, res) {
+    const enabled = req.body.enabled;
+    const settings = readJSON(SETTINGS_FILE);
+    settings.maintenanceMode = enabled;
+    writeJSON(SETTINGS_FILE, settings);
+    
+    res.json({ success: true, maintenanceMode: enabled });
+});
+
+// Maintenance mode middleware
+app.use(function(req, res, next) {
+    const settings = readJSON(SETTINGS_FILE);
+    if (settings.maintenanceMode && !req.path.includes('/api/health') && !req.path.includes('/api/admin')) {
+        return res.status(503).json({ error: 'System under maintenance. Please try again later.' });
+    }
+    next();
+});
+
+// ============ 404 AND ERROR HANDLING ============
+app.use(function(req, res) {
+    res.status(404).json({ error: 'Endpoint not found', path: req.url });
+});
+
+app.use(function(err, req, res, next) {
+    console.error('Unhandled error:', err);
+    res.status(500).json({
+        error: 'Internal server error',
+        message: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
 });
 
 // ============ START SERVER ============
-app.listen(PORT, () => {
+app.listen(PORT, function() {
     console.log('');
-    console.log('========================================');
-    console.log('✅ Abdirizak Academy Backend Running!');
-    console.log('========================================');
-    console.log(`📍 URL: http://localhost:${PORT}`);
-    console.log(`🔐 Admin Login: http://localhost:${PORT}/admin-login.html`);
-    console.log(`💚 Health Check: http://localhost:${PORT}/api/health`);
-    console.log('========================================');
+    console.log('╔════════════════════════════════════════════════════════════════════════════════╗');
+    console.log('║                    🚀 ABDIRIZAK ACADEMY - PRODUCTION SERVER v3.0               ║');
+    console.log('╚════════════════════════════════════════════════════════════════════════════════╝');
+    console.log('');
+    console.log('📍 Server URL: http://localhost:' + PORT);
+    console.log('💚 Health Check: http://localhost:' + PORT + '/api/health');
+    console.log('🔐 Admin Login: http://localhost:' + PORT + '/admin-login.html');
+    console.log('');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('📊 SYSTEM STATUS:');
+    console.log('   • Users: ' + readJSON(USERS_FILE).length);
+    console.log('   • Modules: ' + readJSON(MODULES_FILE).length);
+    console.log('   • Videos: ' + readJSON(VIDEOS_FILE).length);
+    console.log('   • Payments: ' + readJSON(PAYMENTS_FILE).length);
+    console.log('   • Certificates: ' + readJSON(CERTIFICATES_FILE).length);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     
-    // Check M-Pesa configuration status
-    const hasConsumerKey = process.env.MPESA_CONSUMER_KEY && 
-                           process.env.MPESA_CONSUMER_KEY !== 'YOUR_ACTUAL_CONSUMER_KEY_HERE' &&
-                           process.env.MPESA_CONSUMER_KEY !== 'YOUR_CONSUMER_KEY_HERE' &&
-                           process.env.MPESA_CONSUMER_KEY !== '';
-    
-    const hasPasskey = process.env.MPESA_PASSKEY && process.env.MPESA_PASSKEY !== '';
-    const hasShortcode = process.env.MPESA_SHORTCODE && process.env.MPESA_SHORTCODE !== '';
-    
-    const hasRealCreds = hasConsumerKey && hasPasskey && hasShortcode;
+    const hasRealCreds = process.env.MPESA_CONSUMER_KEY && 
+                         process.env.MPESA_CONSUMER_KEY !== 'YOUR_ACTUAL_CONSUMER_KEY_HERE';
     
     if (hasRealCreds) {
-        console.log('💚 M-Pesa: REAL API MODE (Live payments enabled)');
-        console.log('📱 Test with: 254708374149 (PIN: 123456)');
-        console.log(`📞 Callback URL: ${process.env.MPESA_CALLBACK_URL || 'not set'}`);
+        console.log('💚 M-PESA: LIVE MODE (Real payments enabled)');
+        console.log('📞 Callback URL: ' + (process.env.MPESA_CALLBACK_URL || 'http://localhost:' + PORT) + '/api/payments/callback');
     } else {
-        console.log('💛 M-Pesa: SIMULATION MODE (Auto-confirms in 3 seconds)');
-        if (!hasConsumerKey) console.log('   ⚠️ Missing MPESA_CONSUMER_KEY');
-        if (!hasPasskey) console.log('   ⚠️ Missing MPESA_PASSKEY');
-        if (!hasShortcode) console.log('   ⚠️ Missing MPESA_SHORTCODE');
-        console.log('📝 Add your M-Pesa credentials to Render Environment Variables for real payments');
+        console.log('💛 M-PESA: SIMULATION MODE (Auto-confirms in 3 seconds)');
+        console.log('📝 Add M-Pesa credentials to .env for real payments');
     }
-    console.log('========================================\n');
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🎯 API READY - ACCEPTING REQUESTS');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('');
 });
 
-// Export for testing
 module.exports = app;
